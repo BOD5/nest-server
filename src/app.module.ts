@@ -8,7 +8,6 @@ import { ChatGateway } from './chat/chat.gateway';
   imports: [
     // ProductsModule,
     // MongooseModule.forRoot(
-    //   `mongodb+srv://bod:1qw23e@cluster0.ieg9v.mongodb.net/products?retryWrites=true&w=majority`,
     // ),
   ],
   controllers: [],
