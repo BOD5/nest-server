@@ -12,6 +12,45 @@ import { ChatDto } from './dto/chat.dto';
 import { MessageDto } from './dto/message.dto';
 import { UserDto } from './dto/user.dto';
 
+function delay(miliseconds) {
+  return new Promise((resolve) => {
+    setTimeout(() => resolve(1), miliseconds);
+  });
+}
+
+const BOTS = [
+  {
+    getMessage: async (mgs) => mgs,
+    user: {
+      id: 1,
+      name: 'Echo Bot',
+      status: '/chat#echoBot-online',
+      avatar: '',
+    },
+  },
+  {
+    getMessage: async (msg) => {
+      await delay(3000);
+      return msg.split('').reverse().join('');
+    },
+    user: {
+      id: 2,
+      name: 'Reverce Bot',
+      status: '/chat#reverseBot-online',
+      avatar: '',
+    },
+  },
+  {
+    getMessage: async () => false,
+    user: {
+      id: 3,
+      name: 'Ignore Bot',
+      status: '/chat#IgnoreBot-online',
+      avatar: '',
+    },
+  },
+];
+
 @WebSocketGateway({ namespace: 'chat' })
 export class ChatGateway
   implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect {
@@ -19,25 +58,22 @@ export class ChatGateway
 
   private logger: Logger = new Logger('ChatGateway');
 
-  private chats: ChatDto[] = Array(0);
-  private users: UserDto[] = Array(0);
-
-  //Compare array
-  private compare(a1, a2) {
-    return a1.length == a2.length && a1.every((v, i) => v === a2[i]);
-  }
+  private chats: ChatDto[] = [];
+  private users: UserDto[] = [];
 
   botsActions: { [k: string]: any } = {
     botEcho: (msg) => {
-      null;
+      return msg;
+      // return msg.split('').reverse().join('');
     },
   };
 
   //Server
-  afterInit(server: Socket) {
+  afterInit(/* server: Socket */) {
     this.logger.log('Initialie ');
-    // console.log(' - socket:40 >', socket); // eslint-disable-line no-console
-    // console.log(' - server.id:39 >', server); // eslint-disable-line no-console
+    // client.emit('addUser');
+    BOTS.forEach(({ user }) => this.users.push(user));
+    // this.users.push(BOTS.Echo.user);
   }
 
   handleConnection(client: Socket, ...args: any[]) {
@@ -108,18 +144,45 @@ export class ChatGateway
       id: this.chats[index].messages.length + 1,
       isReading: '',
     };
+    // To user
     this.chats[index].messages.push(newMsg);
+    console.log(' - newMsg:105 >', newMsg); // eslint-disable-line no-console
     this.wss.in('chat' + chatId).emit('getMessage', { msg: newMsg, chatId });
+
+    // To bot
+    const toUserId = this.chats[index].usersId
+      .filter((id) => msg.ovner !== id)
+      .pop();
+
+    const bot = BOTS.find(({ user }) => user.id === toUserId);
+    if (bot) {
+      bot.getMessage(newMsg.text).then((text) => {
+        if (text === false) return;
+        const botMsg: MessageDto = {
+          text,
+          ovner: bot.user.id,
+          created: new Date().toISOString(),
+          id: this.chats[index].messages.length + 1,
+          isReading: '',
+        };
+        this.chats[index].messages.push(botMsg);
+        this.wss
+          .in(`chat${chatId}`)
+          .emit('getMessage', { msg: botMsg, chatId });
+      });
+    }
   }
 
   //receive chat messages from server
   @SubscribeMessage('chatFromServer')
   handleChatFromServer(client: Socket, ids: number[]) {
-    const chat: ChatDto = this.chats.find((chat) =>
-      this.compare(chat.usersId.sort(), ids.sort()),
+    const chat: ChatDto = this.chats.find(
+      (chat) =>
+        JSON.stringify(chat.usersId.sort()) === JSON.stringify(ids.sort()),
     );
     if (chat) {
       client.join('chat' + chat.id);
+      console.log(' - chat.messages:118 >', chat.messages); // eslint-disable-line no-console
       return { chatId: chat.id, msgs: chat.messages };
       // client.emit('getChatMessages', { chatId: chat.id, msgs: chat.messages });
     } else {
