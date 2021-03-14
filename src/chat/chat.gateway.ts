@@ -1,4 +1,4 @@
-import { Logger } from '@nestjs/common';
+import { Logger, OnApplicationShutdown } from '@nestjs/common';
 import {
   OnGatewayConnection,
   OnGatewayDisconnect,
@@ -17,6 +17,26 @@ function delay(miliseconds) {
     setTimeout(() => resolve(1), miliseconds);
   });
 }
+
+const Timer = () => {
+  let timerId;
+  const f = () => {
+    return null;
+  };
+  f.start = (time, func, ...args) => {
+    timerId = setInterval(async () => {
+      console.log(`after ${time / 1000}sec `);
+      await func(...args);
+    }, time);
+  };
+  f.stop = (time) => {
+    setTimeout(() => {
+      clearInterval(timerId);
+      console.log('stop');
+    }, time | 0);
+  };
+  return f;
+};
 
 const BOTS = [
   {
@@ -49,7 +69,52 @@ const BOTS = [
       avatar: '',
     },
   },
+  {
+    getMessage: async () => false,
+    user: {
+      id: 4,
+      name: 'Spam Bot',
+      status: '/chat#ISpamBot-online',
+      avatar: '',
+    },
+  },
 ];
+
+function createChatForSpam(ids: number[], chats) {
+  const chat: ChatDto = this.chats.find(
+    (chat) =>
+      JSON.stringify(chat.usersId.sort()) === JSON.stringify(ids.sort()),
+  );
+  if (!chat) {
+    const newChat: ChatDto = {
+      id: chats.length + 1,
+      usersId: ids,
+      messages: [],
+    };
+    chats.push(newChat);
+  }
+}
+
+async function sendGavno(chats: ChatDto[], server: Server) {
+  const spamChats = chats.filter((chat) => chat.usersId.indexOf(4) !== -1);
+  spamChats.forEach(async (chat) => {
+    const delayT = Math.floor(Math.random() * Math.floor(1000));
+    await delay(delayT);
+    const newMsg: MessageDto = {
+      text: 'Gavno',
+      id: chat.messages.length + 1,
+      isReading: '',
+      ovner: 4,
+      created: new Date().toISOString(),
+    };
+    console.log(' - delayT:110 >', delayT); // eslint-disable-line no-console
+    // console.log(' - newMsg:110 >', newMsg); // eslint-disable-line no-console
+    chats[chat.id - 1].messages.push(newMsg);
+    server
+      .in('chat' + chat.id)
+      .emit('getMessage', { msg: newMsg, chatId: chat.id });
+  });
+}
 
 @WebSocketGateway({ namespace: 'chat' })
 export class ChatGateway
@@ -61,18 +126,15 @@ export class ChatGateway
   private chats: ChatDto[] = [];
   private users: UserDto[] = [];
 
-  botsActions: { [k: string]: any } = {
-    botEcho: (msg) => {
-      return msg;
-      // return msg.split('').reverse().join('');
-    },
-  };
+  private timer = Timer();
 
   //Server
   afterInit(/* server: Socket */) {
     this.logger.log('Initialie ');
     // client.emit('addUser');
     BOTS.forEach(({ user }) => this.users.push(user));
+    this.timer.start(10000, sendGavno, this.chats, this.wss);
+    this.timer.stop(6000000);
     // this.users.push(BOTS.Echo.user);
   }
 
@@ -109,6 +171,9 @@ export class ChatGateway
     this.users.push(newUser);
     client.emit('getUser', newUser);
     this.wss.emit('updateUserStatus', newUser);
+
+    //spam bot
+    createChatForSpam([newUser.id, 4], this.chats);
   }
   //Combine newUser and checkUser
   @SubscribeMessage('checkUser')
