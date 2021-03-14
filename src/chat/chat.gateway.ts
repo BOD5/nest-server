@@ -81,10 +81,11 @@ const BOTS = [
 ];
 
 function createChatForSpam(ids: number[], chats) {
-  const chat: ChatDto = this.chats.find(
+  const chat: ChatDto = chats.find(
     (chat) =>
       JSON.stringify(chat.usersId.sort()) === JSON.stringify(ids.sort()),
   );
+  console.log(' - chat:88 >', chat); // eslint-disable-line no-console
   if (!chat) {
     const newChat: ChatDto = {
       id: chats.length + 1,
@@ -108,7 +109,6 @@ async function sendGavno(chats: ChatDto[], server: Server) {
       created: new Date().toISOString(),
     };
     console.log(' - delayT:110 >', delayT); // eslint-disable-line no-console
-    // console.log(' - newMsg:110 >', newMsg); // eslint-disable-line no-console
     chats[chat.id - 1].messages.push(newMsg);
     server
       .in('chat' + chat.id)
@@ -134,7 +134,7 @@ export class ChatGateway
     // client.emit('addUser');
     BOTS.forEach(({ user }) => this.users.push(user));
     this.timer.start(10000, sendGavno, this.chats, this.wss);
-    this.timer.stop(6000000);
+    this.timer.stop(6000000); /// kill timer afeter (time)
     // this.users.push(BOTS.Echo.user);
   }
 
@@ -178,6 +178,7 @@ export class ChatGateway
   //Combine newUser and checkUser
   @SubscribeMessage('checkUser')
   handleCheckUser(client: Socket, user: UserDto) {
+    let id;
     if (
       !(this.users[user.id - 1] && this.users[user.id - 1].name === user.name)
     ) {
@@ -186,14 +187,18 @@ export class ChatGateway
         id: this.users.length + 1,
         status: `${client.id}`,
       };
+      id = newUser.id;
       this.users.push(newUser);
       client.emit('getUser', newUser);
       this.wss.emit('updateUserStatus', newUser);
     } else {
+      id = user.id;
       this.users[user.id - 1].status = `${client.id}`;
       client.emit('getUser', this.users[user.id - 1]);
       this.wss.emit('updateUserStatus', this.users[user.id - 1]);
     }
+
+    createChatForSpam([id, 4], this.chats);
   }
   ///////////////
   //Messages
