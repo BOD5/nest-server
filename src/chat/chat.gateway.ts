@@ -69,6 +69,8 @@ export class ChatGateway
   private chats: ChatDto[] = [];
   private users: UserDto[] = [];
 
+  private typingMsg: any = {};
+
   private timer = Timer();
 
   //Server
@@ -157,6 +159,7 @@ export class ChatGateway
     // To user
     this.chats[index].messages.push(newMsg);
     this.wss.in('chat' + chatId).emit('getMessage', { msg: newMsg, chatId });
+    this.typing({ uId: newMsg.ovner.id, chatId, client, isWrite: false });
 
     // To bot
     const toUserId = this.chats[index].usersId
@@ -165,7 +168,7 @@ export class ChatGateway
 
     const bot = BOTS.find(({ user }) => user.id === toUserId);
     if (bot) {
-      this.wss.in(`chat${chatId}`).emit('listenWrite', { uId: bot.user.id });
+      this.typing({ chatId, uId: bot.user.id });
       bot.getMessage(newMsg.text).then((text) => {
         if (text === false) return;
         const botMsg: MessageDto = {
@@ -176,6 +179,7 @@ export class ChatGateway
           isReading: '',
         };
         this.chats[index].messages.push(botMsg);
+        this.typing({ chatId, uId: bot.user.id, isWrite: false });
         this.wss
           .in(`chat${chatId}`)
           .emit('getMessage', { msg: botMsg, chatId });
@@ -183,9 +187,41 @@ export class ChatGateway
     }
   }
 
+  typing({ chatId, uId, client = null, isWrite = true, delay = 3000 }) {
+    const timerKey = `${chatId}_${uId}`;
+    if (!isWrite) {
+      if (timerKey in this.typingMsg) {
+        this.typingMsg[timerKey]();
+      }
+      return true;
+    }
+    const c = `chat${chatId}`;
+    this.typingMsg[timerKey] = () => {
+      clearTimeout(this.typingMsg[timerKey].timer);
+      delete this.typingMsg[timerKey];
+      // console.log(' - c:210 >', typeof cc); // eslint-disable-line no-console
+      // console.log(' - c:210 >', cc); // eslint-disable-line no-console
+      // const cc = c(`chat${chatId}`);
+      (client ? client.to(c) : this.wss.in(c)).emit('listenWrite', {
+        uId,
+        isWrite: false,
+      });
+    };
+    const timer = setTimeout(() => {
+      console.log(' - 123:210 >', timerKey in this.typingMsg); // eslint-disable-line no-console
+      if (timerKey in this.typingMsg) {
+        this.typingMsg[timerKey]();
+      }
+    }, delay);
+    this.typingMsg[timerKey].timer = timer;
+    const cc = client ? client.to(c) : this.wss.in(c);
+    cc.emit('listenWrite', { uId, isWrite: true });
+    return true;
+  }
+
   @SubscribeMessage('userWriteMsg')
   handleUserWrite(client: Socket, { chatId, uId }) {
-    client.to(`chat${chatId}`).emit('listenWrite', { uId });
+    this.typing({ chatId, uId, client });
   }
 
   //receive chat messages from server
