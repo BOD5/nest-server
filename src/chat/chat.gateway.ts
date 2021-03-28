@@ -16,6 +16,15 @@ import BOTS from './../logic/bots';
 
 import { delay, Timer } from './../logic/timer';
 
+function changeMsgStatus(chats: ChatDto[], chatId: number, msgId: number) {
+  if (chats[chatId - 1].messages[msgId - 1].isReading === '')
+    chats[chatId - 1].messages[msgId - 1].isReading = new Date().toISOString();
+  console.log(
+    ' - chats[chatId - 1].messages[msgId - 1].isReading:21 >',
+    chats[chatId - 1].messages[msgId - 1].isReading,
+  ); // eslint-disable-line no-console
+}
+
 function createChatForSpam(ids: number[], chats) {
   const chat: ChatDto = chats.find(
     (chat) =>
@@ -157,6 +166,7 @@ export class ChatGateway
       isReading: '',
     };
     // To user
+    console.log('list ', this.wss.in('chat' + chatId));
     this.chats[index].messages.push(newMsg);
     this.wss.in('chat' + chatId).emit('getMessage', { msg: newMsg, chatId });
     this.typing({ uId: newMsg.ovner.id, chatId, client, isWrite: false });
@@ -168,6 +178,7 @@ export class ChatGateway
 
     const bot = BOTS.find(({ user }) => user.id === toUserId);
     if (bot) {
+      changeMsgStatus(this.chats, chatId, newMsg.id);
       this.typing({ chatId, uId: bot.user.id });
       bot.getMessage(newMsg.text).then((text) => {
         if (text === false) return;
@@ -199,16 +210,12 @@ export class ChatGateway
     this.typingMsg[timerKey] = () => {
       clearTimeout(this.typingMsg[timerKey].timer);
       delete this.typingMsg[timerKey];
-      // console.log(' - c:210 >', typeof cc); // eslint-disable-line no-console
-      // console.log(' - c:210 >', cc); // eslint-disable-line no-console
-      // const cc = c(`chat${chatId}`);
       (client ? client.to(c) : this.wss.in(c)).emit('listenWrite', {
         uId,
         isWrite: false,
       });
     };
     const timer = setTimeout(() => {
-      console.log(' - 123:210 >', timerKey in this.typingMsg); // eslint-disable-line no-console
       if (timerKey in this.typingMsg) {
         this.typingMsg[timerKey]();
       }
@@ -227,12 +234,21 @@ export class ChatGateway
   //receive chat messages from server
   @SubscribeMessage('chatFromServer')
   handleChatFromServer(client: Socket, ids: number[]) {
+    const from = ids[0];
     const chat: ChatDto = this.chats.find(
       (chat) =>
         JSON.stringify(chat.usersId.sort()) === JSON.stringify(ids.sort()),
     );
     if (chat) {
       client.join('chat' + chat.id);
+      chat.messages.forEach((msg) => {
+        if (msg.ovner.id !== from) {
+          changeMsgStatus(this.chats, chat.id, msg.id);
+          this.wss
+            .in(`chat${chat.id}`)
+            .emit('changeMessageStatus', { msg: msg, chatId: chat.id });
+        }
+      });
       return { chatId: chat.id, msgs: chat.messages };
     } else {
       const newChat: ChatDto = {
