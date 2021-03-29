@@ -6,7 +6,7 @@ const BOTS = [
     user: {
       id: 1,
       name: 'Echo Bot',
-      status: '/chat#echoBot-online',
+      status: 'Online',
       avatar:
         'https://www.imgworlds.com/wp-content/uploads/2015/12/18-CONTACTUS-HEADER.jpg',
     },
@@ -19,7 +19,7 @@ const BOTS = [
     user: {
       id: 2,
       name: 'Reverce Bot',
-      status: '/chat#reverseBot-online',
+      status: 'Online',
       avatar:
         'https://www.imgworlds.com/wp-content/uploads/2015/12/18-CONTACTUS-HEADER.jpg',
     },
@@ -29,7 +29,7 @@ const BOTS = [
     user: {
       id: 3,
       name: 'Ignore Bot',
-      status: '/chat#IgnoreBot-online',
+      status: 'Online',
       avatar:
         'https://www.imgworlds.com/wp-content/uploads/2015/12/18-CONTACTUS-HEADER.jpg',
     },
@@ -39,7 +39,7 @@ const BOTS = [
     user: {
       id: 4,
       name: 'Spam Bot',
-      status: '/chat#ISpamBot-online',
+      status: 'Online',
       avatar:
         'https://www.imgworlds.com/wp-content/uploads/2015/12/18-CONTACTUS-HEADER.jpg',
     },

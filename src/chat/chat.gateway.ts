@@ -37,14 +37,6 @@ async function sendGavno(chats, server: Server) {
   chats.fncToChatByUser(4, send);
 }
 
-function userToClient(usr: UserDto) {
-  if (usr)
-    return {
-      ...usr,
-      status: usr.status === '' ? 'Ofline' : 'Online',
-    };
-}
-
 @WebSocketGateway({ namespace: 'chat' })
 export class ChatGateway
   implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect {
@@ -67,27 +59,27 @@ export class ChatGateway
   handleConnection(client: Socket, ...args: any[]) {
     this.logger.log(`Client connected:     ${client.id}`);
     client.emit('checkUser');
-    client.emit('getUsers', this.users.toAll(userToClient));
+    client.emit('getUsers', this.users.getAll());
   }
 
   handleDisconnect(client: Socket) {
-    //change status and client id (?)
-    const user = this.users.findByStatus(`${client.id}`);
-    if (user) this.users.updateUserStatus(user, '');
     this.logger.log(`Client disconnected:  ${client.id}`);
   }
 
   //Users
   @SubscribeMessage('checkUser')
   handleCheckUser(client: Socket, user: UserDto) {
-    console.log(' - 123:83 >', 123); // eslint-disable-line no-console
-    const checkedUser = this.users.checkUser(user, client.id);
-    this.wss.emit('updateUserStatus', userToClient(checkedUser));
-    this.logger.log(`user ${checkedUser}`);
+    const checkedUser = this.users.checkUser(user, 'Online');
+    this.wss.emit('updateUserStatus', checkedUser);
     return { user: checkedUser };
 
     ////////////check chat or create
     // createChatForSpam([checkedUser.id, 4], this.chats);
+  }
+  @SubscribeMessage('userGoOffline')
+  handleUserGoOffline(client: Socket, user: UserDto) {
+    const checkedUser = this.users.updateUserStatus(user, 'Offline');
+    this.wss.emit('updateUserStatus', checkedUser);
   }
   ///////////////
   //Messages

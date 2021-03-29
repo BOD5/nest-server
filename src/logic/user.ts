@@ -52,13 +52,11 @@ const UserClass = () => {
   userClass.checkUser = (user: UserDto, status: string) => {
     try {
       let us = userClass.findUser(user);
-      console.log(' - us:57 >', us); // eslint-disable-line no-console
       if (!us) {
         us = userClass.createUser(user, status);
       } else {
         us = userClass.updateUserStatus(user, status);
       }
-      console.log(' - user:61 >', us); // eslint-disable-line no-console
       return us;
     } catch (e) {
       console.error(e);
@@ -73,7 +71,7 @@ const UserClass = () => {
   };
 
   userClass.getAll = () => {
-    return users;
+    return [...users];
   };
 
   return userClass;
