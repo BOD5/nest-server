@@ -12,60 +12,37 @@ import { ChatDto } from './dto/chat.dto';
 import { MessageDto } from './dto/message.dto';
 import { UserDto } from './dto/user.dto';
 
-import BOTS from './../logic/bots';
+import userClass from 'src/logic/user';
+import chatClass from 'src/logic/chat';
 
-import { delay, Timer } from './../logic/timer';
+import BOTS from 'src/logic/bots';
 
-function changeMsgStatus(chats: ChatDto[], chatId: number, msgId: number) {
-  if (chats[chatId - 1].messages[msgId - 1].isReading === '')
-    chats[chatId - 1].messages[msgId - 1].isReading = new Date().toISOString();
-  console.log(
-    ' - chats[chatId - 1].messages[msgId - 1].isReading:21 >',
-    chats[chatId - 1].messages[msgId - 1].isReading,
-  ); // eslint-disable-line no-console
-}
+import { delay, Timer } from 'src/logic/timer';
 
 function createChatForSpam(ids: number[], chats) {
-  const chat: ChatDto = chats.find(
-    (chat) =>
-      JSON.stringify(chat.usersId.sort()) === JSON.stringify(ids.sort()),
-  );
-  // console.log(' - chat:88 >', chat); // eslint-disable-line no-console
-  if (!chat) {
-    const newChat: ChatDto = {
-      id: chats.length + 1,
-      usersId: ids,
-      messages: [],
-    };
-    chats.push(newChat);
-  }
+  chats.checkChat(ids);
 }
 
-async function sendGavno(chats: ChatDto[], server: Server) {
-  const spamChats = chats.filter((chat) => chat.usersId.indexOf(4) !== -1);
-  spamChats.forEach(async (chat) => {
+async function sendGavno(chats, server: Server) {
+  const send = async (chatId: number) => {
     const delayT = Math.floor(Math.random() * Math.floor(1000));
-    await delay(delayT);
-    const newMsg: MessageDto = {
+    const gavno: MessageDto = {
       text: 'Gavno',
-      id: chat.messages.length + 1,
-      isReading: '',
       ovner: BOTS[3].user,
-      created: new Date().toISOString(),
     };
-    // console.log(' - delayT:110 >', delayT); // eslint-disable-line no-console
-    chats[chat.id - 1].messages.push(newMsg);
-    server
-      .in('chat' + chat.id)
-      .emit('getMessage', { msg: newMsg, chatId: chat.id });
-  });
+    await delay(delayT);
+    const msg = chats.newMsgToChat(gavno, chatId);
+    server.in('chat' + chatId).emit('getMessage', { msg, chatId });
+  };
+  chats.fncToChatByUser(4, send);
 }
 
 function userToClient(usr: UserDto) {
-  return {
-    ...usr,
-    status: usr.status === '' ? 'Ofline' : 'Online',
-  };
+  if (usr)
+    return {
+      ...usr,
+      status: usr.status === '' ? 'Ofline' : 'Online',
+    };
 }
 
 @WebSocketGateway({ namespace: 'chat' })
@@ -74,18 +51,15 @@ export class ChatGateway
   @WebSocketServer() wss: Server;
 
   private logger: Logger = new Logger('ChatGateway');
-
-  private chats: ChatDto[] = [];
-  private users: UserDto[] = [];
-
+  private chats = chatClass();
+  private users = userClass();
   private typingMsg: any = {};
-
   private timer = Timer();
 
   //Server
   afterInit(/* server: Socket */) {
     this.logger.log('Initialie ');
-    BOTS.forEach(({ user }) => this.users.push(user));
+    BOTS.forEach(({ user }) => this.users.createUser(user, user.status));
     this.timer.start(10000, sendGavno, this.chats, this.wss);
     this.timer.stop(6000000); /// kill timer afeter (time)
   }
@@ -93,62 +67,25 @@ export class ChatGateway
   handleConnection(client: Socket, ...args: any[]) {
     this.logger.log(`Client connected:     ${client.id}`);
     client.emit('checkUser');
-    client.emit(
-      'getUsers',
-      this.users.map((user) => userToClient(user)),
-    );
+    client.emit('getUsers', this.users.toAll(userToClient));
   }
 
   handleDisconnect(client: Socket) {
     //change status and client id (?)
-    const index = this.users.findIndex((user) => user.status == client.id);
-    if (index !== -1) {
-      this.users[index].status = '';
-      this.wss.emit('updateUserStatus', this.users[index]);
-    }
+    const user = this.users.findByStatus(`${client.id}`);
+    if (user) this.users.updateUserStatus(user, '');
     this.logger.log(`Client disconnected:  ${client.id}`);
   }
 
   //Users
-
-  @SubscribeMessage('newUser')
-  handleNewUser(client: Socket, user: UserDto) {
-    const newUser: UserDto = {
-      ...user,
-      id: this.users.length + 1,
-      status: `${client.id}`,
-    };
-    this.users.push(newUser);
-    client.emit('getUser', userToClient(newUser));
-    this.wss.emit('updateUserStatus', userToClient(newUser));
-
-    //spam bot
-    createChatForSpam([newUser.id, 4], this.chats);
-  }
-  //Combine newUser and checkUser
   @SubscribeMessage('checkUser')
   handleCheckUser(client: Socket, user: UserDto) {
-    let id;
-    if (
-      !(this.users[user.id - 1] && this.users[user.id - 1].name === user.name)
-    ) {
-      const newUser: UserDto = {
-        ...user,
-        id: this.users.length + 1,
-        status: `${client.id}`,
-      };
-      id = newUser.id;
-      this.users.push(newUser);
-      client.emit('getUser', userToClient(newUser));
-      this.wss.emit('updateUserStatus', userToClient(newUser));
-    } else {
-      id = user.id;
-      this.users[user.id - 1].status = `${client.id}`;
-      client.emit('getUser', userToClient(this.users[user.id - 1]));
-      this.wss.emit('updateUserStatus', userToClient(this.users[user.id - 1]));
-    }
+    const checkedUser = this.users.checkUser(user, client.id);
+    this.wss.emit('updateUserStatus', userToClient(checkedUser));
+    return { user: userToClient(checkedUser) };
 
-    createChatForSpam([id, 4], this.chats);
+    ////////////check chat or create
+    // createChatForSpam([checkedUser.id, 4], this.chats);
   }
   ///////////////
   //Messages
@@ -158,38 +95,27 @@ export class ChatGateway
     data: { msg: MessageDto; chatId: number },
   ): void {
     const { msg, chatId } = data;
-    const index = this.chats.findIndex((c) => c.id === chatId);
-    const newMsg: MessageDto = {
-      ...msg,
-      id: this.chats[index].messages.length + 1,
-      created: new Date().toISOString(),
-      isReading: '',
-    };
+    const newMsg = this.chats.newMsgToChat(msg, chatId);
     // To user
-    console.log('list ', this.wss.in('chat' + chatId));
-    this.chats[index].messages.push(newMsg);
     this.wss.in('chat' + chatId).emit('getMessage', { msg: newMsg, chatId });
     this.typing({ uId: newMsg.ovner.id, chatId, client, isWrite: false });
 
     // To bot
-    const toUserId = this.chats[index].usersId
-      .filter((id) => msg.ovner.id !== id)
+    const toUserId = this.chats
+      .getChatById(chatId)
+      .usersId.filter((id) => msg.ovner.id !== id)
       .pop();
 
     const bot = BOTS.find(({ user }) => user.id === toUserId);
     if (bot) {
-      changeMsgStatus(this.chats, chatId, newMsg.id);
       this.typing({ chatId, uId: bot.user.id });
       bot.getMessage(newMsg.text).then((text) => {
         if (text === false) return;
-        const botMsg: MessageDto = {
+        let botMsg: MessageDto = {
           text,
           ovner: bot.user,
-          created: new Date().toISOString(),
-          id: this.chats[index].messages.length + 1,
-          isReading: '',
         };
-        this.chats[index].messages.push(botMsg);
+        botMsg = this.chats.newMsgToChat(botMsg, chatId);
         this.typing({ chatId, uId: bot.user.id, isWrite: false });
         this.wss
           .in(`chat${chatId}`)
@@ -234,34 +160,11 @@ export class ChatGateway
   //receive chat messages from server
   @SubscribeMessage('chatFromServer')
   handleChatFromServer(client: Socket, ids: number[]) {
-    const from = ids[0];
-    const chat: ChatDto = this.chats.find(
-      (chat) =>
-        JSON.stringify(chat.usersId.sort()) === JSON.stringify(ids.sort()),
-    );
-    if (chat) {
-      client.join('chat' + chat.id);
-      chat.messages.forEach((msg) => {
-        if (msg.ovner.id !== from) {
-          changeMsgStatus(this.chats, chat.id, msg.id);
-          this.wss
-            .in(`chat${chat.id}`)
-            .emit('changeMessageStatus', { msg: msg, chatId: chat.id });
-        }
-      });
-      return { chatId: chat.id, msgs: chat.messages };
-    } else {
-      const newChat: ChatDto = {
-        id: this.chats.length + 1,
-        usersId: ids,
-        messages: [],
-      };
-      client.join('chat' + newChat.id);
-      this.chats.push(newChat);
-      return {
-        chatId: newChat.id,
-        msgs: newChat.messages,
-      };
-    }
+    const chat = this.chats.checkChat(ids);
+    client.join('chat' + chat.id);
+    return {
+      chatId: chat.id,
+      msgs: chat.messages,
+    };
   }
 }
