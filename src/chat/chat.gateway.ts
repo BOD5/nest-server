@@ -80,9 +80,11 @@ export class ChatGateway
   //Users
   @SubscribeMessage('checkUser')
   handleCheckUser(client: Socket, user: UserDto) {
+    console.log(' - 123:83 >', 123); // eslint-disable-line no-console
     const checkedUser = this.users.checkUser(user, client.id);
     this.wss.emit('updateUserStatus', userToClient(checkedUser));
-    return { user: userToClient(checkedUser) };
+    this.logger.log(`user ${checkedUser}`);
+    return { user: checkedUser };
 
     ////////////check chat or create
     // createChatForSpam([checkedUser.id, 4], this.chats);

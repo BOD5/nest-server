@@ -28,10 +28,10 @@ const UserClass = () => {
   userClass.findUser = (user: UserDto) => {
     try {
       const index = users.findIndex(
-        (u) => u.status == user.status && user.id === u.id,
+        (u) => u.name == user.name && user.id === u.id,
       );
       if (index !== -1) return users[index];
-      else throw new Error(`can't find ${user}`);
+      else return false;
     } catch (err) {
       throw new Error(err);
     }
@@ -39,10 +39,7 @@ const UserClass = () => {
 
   userClass.updateUserStatus = (user: UserDto, newStatus: string) => {
     try {
-      console.log(' - user:41 >', user); // eslint-disable-line no-console
-      const index = users.findIndex(
-        (u) => u.status === user.status && user.id === u.id,
-      );
+      const index = users.findIndex((u) => user.id === u.id);
       if (index !== -1) {
         users[index].status = newStatus;
         return users[index];
@@ -53,13 +50,20 @@ const UserClass = () => {
   };
 
   userClass.checkUser = (user: UserDto, status: string) => {
-    let us: UserDto;
-    if (!(users[user.id - 1] && users[user.id - 1].name === user.name)) {
-      us = userClass.createUser(user, status);
-    } else {
-      us = userClass.updateUserStatus(user, status);
+    try {
+      let us = userClass.findUser(user);
+      console.log(' - us:57 >', us); // eslint-disable-line no-console
+      if (!us) {
+        us = userClass.createUser(user, status);
+      } else {
+        us = userClass.updateUserStatus(user, status);
+      }
+      console.log(' - user:61 >', us); // eslint-disable-line no-console
+      return us;
+    } catch (e) {
+      console.error(e);
+      throw new Error(e);
     }
-    return us;
   };
 
   userClass.toAll = (callback: (...args) => UserDto) => {
