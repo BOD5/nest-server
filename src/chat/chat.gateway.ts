@@ -18,6 +18,7 @@ import chatClass from 'src/logic/chat';
 import BOTS from 'src/logic/bots';
 
 import { delay, Timer } from 'src/logic/timer';
+import { timeStamp } from 'node:console';
 
 function createChatForSpam(ids: number[], chats) {
   chats.checkChat(ids);
@@ -34,7 +35,7 @@ async function sendGavno(chats, server: Server) {
     const msg = chats.newMsgToChat(gavno, chatId);
     server.in('chat' + chatId).emit('getMessage', { msg, chatId });
   };
-  chats.fncToChatByUser(4, send);
+  chats.fncToChatByUser(BOTS[3].user, send);
 }
 
 @WebSocketGateway({ namespace: 'chat' })
@@ -59,7 +60,6 @@ export class ChatGateway
   handleConnection(client: Socket, ...args: any[]) {
     this.logger.log(`Client connected:     ${client.id}`);
     client.emit('checkUser');
-    client.emit('getUsers', this.users.getAll());
   }
 
   handleDisconnect(client: Socket) {
@@ -71,15 +71,28 @@ export class ChatGateway
   handleCheckUser(client: Socket, user: UserDto) {
     const checkedUser = this.users.checkUser(user, 'Online');
     this.wss.emit('updateUserStatus', checkedUser);
+    const usersToClient = this.users.getAll().map((u) => {
+      return {
+        user: u,
+        chatId: this.chats.checkChat([checkedUser, u]).id,
+      };
+    });
+    // console.log(' - usersToClient:80 >', usersToClient); // eslint-disable-line no-console
+    client.emit('getUsers', usersToClient);
+    createChatForSpam([checkedUser.id, 4], this.chats);
     return { user: checkedUser };
 
     ////////////check chat or create
-    // createChatForSpam([checkedUser.id, 4], this.chats);
   }
   @SubscribeMessage('userGoOffline')
   handleUserGoOffline(client: Socket, user: UserDto) {
-    const checkedUser = this.users.updateUserStatus(user, 'Offline');
-    this.wss.emit('updateUserStatus', checkedUser);
+    try {
+      const checkedUser = this.users.updateUserStatus(user, 'Offline');
+      this.wss.emit('updateUserStatus', checkedUser);
+    } catch (e) {
+      this.logger.log(e);
+      throw new Error(e);
+    }
   }
   ///////////////
   //Messages
@@ -93,15 +106,18 @@ export class ChatGateway
     // To user
     this.wss.in('chat' + chatId).emit('getMessage', { msg: newMsg, chatId });
     this.typing({ uId: newMsg.ovner.id, chatId, client, isWrite: false });
-
     // To bot
-    const toUserId = this.chats
+    const toUser = this.chats
       .getChatById(chatId)
-      .usersId.filter((id) => msg.ovner.id !== id)
+      .users.filter((u) => msg.ovner.id !== u.id)
       .pop();
 
-    const bot = BOTS.find(({ user }) => user.id === toUserId);
+    const bot = BOTS.find(({ user }) => user.id === toUser.id);
     if (bot) {
+      this.chats.changeMsgStatus(chatId, newMsg.id, new Date().toISOString());
+      this.wss
+        .in('chat' + chatId)
+        .emit('updateMsgStatus', { msg: newMsg, chatId });
       this.typing({ chatId, uId: bot.user.id });
       bot.getMessage(newMsg.text).then((text) => {
         if (text === false) return;
@@ -118,7 +134,7 @@ export class ChatGateway
     }
   }
 
-  typing({ chatId, uId, client = null, isWrite = true, delay = 3000 }) {
+  async typing({ chatId, uId, client = null, isWrite = true, delay = 3000 }) {
     const timerKey = `${chatId}_${uId}`;
     if (!isWrite) {
       if (timerKey in this.typingMsg) {
@@ -128,11 +144,12 @@ export class ChatGateway
     }
     const c = `chat${chatId}`;
     this.typingMsg[timerKey] = () => {
+      const writes = this.chats.userStopWrite(chatId, uId);
       clearTimeout(this.typingMsg[timerKey].timer);
       delete this.typingMsg[timerKey];
+      console.log(' - writes:161 >', writes); // eslint-disable-line no-console
       (client ? client.to(c) : this.wss.in(c)).emit('listenWrite', {
-        uId,
-        isWrite: false,
+        writes,
       });
     };
     const timer = setTimeout(() => {
@@ -140,9 +157,11 @@ export class ChatGateway
         this.typingMsg[timerKey]();
       }
     }, delay);
+    const writes = this.chats.userWrite(chatId, uId);
     this.typingMsg[timerKey].timer = timer;
+    console.log(' - writes:161 >', writes); // eslint-disable-line no-console
     const cc = client ? client.to(c) : this.wss.in(c);
-    cc.emit('listenWrite', { uId, isWrite: true });
+    cc.emit('listenWrite', { writes });
     return true;
   }
 
@@ -153,12 +172,18 @@ export class ChatGateway
 
   //receive chat messages from server
   @SubscribeMessage('chatFromServer')
-  handleChatFromServer(client: Socket, ids: number[]) {
-    const chat = this.chats.checkChat(ids);
+  handleChatFromServer(client: Socket, { users, chatId }) {
+    // const chat = this.chats.checkChat(users);
+    let chat;
+    if (chatId) chat = this.chats.getChatById(chatId);
+    else chat = this.chats.checkChat(users);
+    console.log(' - chat:180 >', this.chats.getAll()); // eslint-disable-line no-console
     client.join('chat' + chat.id);
     return {
       chatId: chat.id,
       msgs: chat.messages,
+      usersInChat: chat.users,
+      writes: chat.whoWrite,
     };
   }
 }

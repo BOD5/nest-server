@@ -71,7 +71,7 @@ const UserClass = () => {
   };
 
   userClass.getAll = () => {
-    return [...users];
+    return users;
   };
 
   return userClass;
