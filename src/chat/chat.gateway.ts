@@ -18,22 +18,22 @@ import chatClass from 'src/logic/chat';
 import BOTS from 'src/logic/bots';
 
 import { delay, Timer } from 'src/logic/timer';
-import { timeStamp } from 'node:console';
 
-function createChatForSpam(ids: number[], chats) {
-  chats.checkChat(ids);
+function createChatForSpam(ids: UserDto[], chats, client) {
+  const chat = chats.checkChat(ids);
+  client.join('chat' + chat.id);
 }
 
 async function sendGavno(chats, server: Server) {
-  const send = async (chatId: number) => {
+  const send = async (chat: ChatDto) => {
     const delayT = Math.floor(Math.random() * Math.floor(1000));
     const gavno: MessageDto = {
       text: 'Gavno',
       ovner: BOTS[3].user,
     };
     await delay(delayT);
-    const msg = chats.newMsgToChat(gavno, chatId);
-    server.in('chat' + chatId).emit('getMessage', { msg, chatId });
+    const msg = chats.newMsgToChat(gavno, chat.id);
+    server.in('chat' + chat.id).emit('getMessage', { msg, chatId: chat.id });
   };
   chats.fncToChatByUser(BOTS[3].user, send);
 }
@@ -77,9 +77,14 @@ export class ChatGateway
         chatId: this.chats.checkChat([checkedUser, u]).id,
       };
     });
-    // console.log(' - usersToClient:80 >', usersToClient); // eslint-disable-line no-console
     client.emit('getUsers', usersToClient);
-    createChatForSpam([checkedUser.id, 4], this.chats);
+    createChatForSpam([checkedUser, BOTS[3].user], this.chats, client);
+    const chatsLastMsg = this.chats.fncToChatByUser(checkedUser, (chat) => {
+      const res =
+        chat.messages.length > 0 ? chat.messages[chat.messages.length - 1] : {};
+      return res;
+    });
+    client.emit('getChatsLastMsg', chatsLastMsg);
     return { user: checkedUser };
 
     ////////////check chat or create
@@ -118,7 +123,7 @@ export class ChatGateway
       this.wss
         .in('chat' + chatId)
         .emit('updateMsgStatus', { msg: newMsg, chatId });
-      this.typing({ chatId, uId: bot.user.id });
+      this.typing({ chatId, uId: bot.user.id, delay: 3000 });
       bot.getMessage(newMsg.text).then((text) => {
         if (text === false) return;
         let botMsg: MessageDto = {
@@ -134,7 +139,7 @@ export class ChatGateway
     }
   }
 
-  async typing({ chatId, uId, client = null, isWrite = true, delay = 3000 }) {
+  async typing({ chatId, uId, client = null, isWrite = true, delay = 1000 }) {
     const timerKey = `${chatId}_${uId}`;
     if (!isWrite) {
       if (timerKey in this.typingMsg) {
@@ -142,14 +147,20 @@ export class ChatGateway
       }
       return true;
     }
+    let startTyping = true;
+    if (timerKey in this.typingMsg) {
+      clearTimeout(this.typingMsg[timerKey].timer);
+      delete this.typingMsg[timerKey];
+      startTyping = false;
+    }
     const c = `chat${chatId}`;
     this.typingMsg[timerKey] = () => {
       const writes = this.chats.userStopWrite(chatId, uId);
       clearTimeout(this.typingMsg[timerKey].timer);
       delete this.typingMsg[timerKey];
-      console.log(' - writes:161 >', writes); // eslint-disable-line no-console
       (client ? client.to(c) : this.wss.in(c)).emit('listenWrite', {
         writes,
+        chatId,
       });
     };
     const timer = setTimeout(() => {
@@ -159,9 +170,10 @@ export class ChatGateway
     }, delay);
     const writes = this.chats.userWrite(chatId, uId);
     this.typingMsg[timerKey].timer = timer;
-    console.log(' - writes:161 >', writes); // eslint-disable-line no-console
-    const cc = client ? client.to(c) : this.wss.in(c);
-    cc.emit('listenWrite', { writes });
+    if (startTyping) {
+      const cc = client ? client.to(c) : this.wss.in(c);
+      cc.emit('listenWrite', { writes, chatId });
+    }
     return true;
   }
 
@@ -172,12 +184,9 @@ export class ChatGateway
 
   //receive chat messages from server
   @SubscribeMessage('chatFromServer')
-  handleChatFromServer(client: Socket, { users, chatId }) {
+  handleChatFromServer(client: Socket, { users }) {
     // const chat = this.chats.checkChat(users);
-    let chat;
-    if (chatId) chat = this.chats.getChatById(chatId);
-    else chat = this.chats.checkChat(users);
-    console.log(' - chat:180 >', this.chats.getAll()); // eslint-disable-line no-console
+    const chat = this.chats.checkChat(users);
     client.join('chat' + chat.id);
     return {
       chatId: chat.id,

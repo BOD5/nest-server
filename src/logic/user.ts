@@ -25,6 +25,8 @@ const UserClass = () => {
     return users.find((u) => u.status === status);
   };
 
+  userClass.getById = (id: number) => users.find((u) => u.id === id);
+
   userClass.findUser = (user: UserDto) => {
     try {
       const index = users.findIndex(

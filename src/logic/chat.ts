@@ -18,7 +18,7 @@ const chatClass = () => {
     return newChat;
   };
 
-  Chat.checkChat = (users: UserDto[]) => {
+  Chat.checkChat = (users: UserDto[], chatId?: number) => {
     try {
       const chat: ChatDto = chats.find(
         (chat) =>
@@ -67,10 +67,12 @@ const chatClass = () => {
   };
 
   Chat.fncToChatByUser = (user: UserDto, callback: (...args) => void) => {
+    const res = {};
     for (let i = 0; i < chats.length; i++) {
       if (chats[i].users.findIndex((u) => u.id === user.id) !== -1)
-        callback(chats[i].id);
+        res[`${chats[i].id}`] = callback(chats[i]);
     }
+    return res;
   };
 
   Chat.userWrite = (chatId: number, userId: number) => {
@@ -80,14 +82,10 @@ const chatClass = () => {
         chatInd !== -1
           ? chats[chatInd].whoWrite.findIndex((id) => id === userId)
           : false;
-      console.log(' - chatInd, userInd:83 >', chatInd, ' ', userInd); // eslint-disable-line no-console
-      console.log(' - chats[chatInd].whoWrite:84 >', chats[chatInd].whoWrite); // eslint-disable-line no-console
       if (userInd && userInd === -1) {
         chats[chatInd].whoWrite.push(userId);
-        console.log(' - chats[chatInd].whoWrite:85 >', chats[chatInd].whoWrite); // eslint-disable-line no-console
-        console.log(' - chats[chatInd].whoWrite:85 >', chats[chatInd].whoWrite.length); // eslint-disable-line no-console
         return chats[chatInd].whoWrite;
-      } else return [];
+      } else return chats[chatInd].whoWrite;
     } catch (e) {
       console.log(' - e:73 >', e); // eslint-disable-line no-console
       // throw new Error(e);
@@ -100,15 +98,13 @@ const chatClass = () => {
       const userInd =
         chatInd !== -1
           ? chats[chatInd].whoWrite.findIndex((id) => id === userId)
-          : false;
-      if (userInd) {
-        console.log(
-          ' - chats[chatInd].whoWrite:102 >',
-          chats[chatInd].whoWrite,
-        ); // eslint-disable-line no-console
+          : -1;
+      if (userInd !== -1) {
         chats[chatInd].whoWrite.splice(userInd, 1);
         return chats[chatInd].whoWrite;
-      } else return [];
+      } else {
+        return chats[chatInd].whoWrite;
+      }
     } catch (e) {
       throw new Error(e);
     }
