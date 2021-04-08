@@ -64,6 +64,7 @@ const chatClass = () => {
     const index = chats.findIndex((c) => c.id === chatId);
     const msgInd = chats[index].messages.findIndex((m) => m.id === msgId);
     chats[index].messages[msgInd].isReading = newStatus;
+    return chats[index].messages[msgInd];
   };
 
   Chat.fncToChatByUser = (user: UserDto, callback: (...args) => void) => {

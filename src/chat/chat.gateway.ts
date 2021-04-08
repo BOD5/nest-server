@@ -1,4 +1,4 @@
-import { Logger, OnApplicationShutdown } from '@nestjs/common';
+import { Logger } from '@nestjs/common';
 import {
   OnGatewayConnection,
   OnGatewayDisconnect,
@@ -57,7 +57,7 @@ export class ChatGateway
     this.timer.stop(6000000); /// kill timer afeter (time)
   }
 
-  handleConnection(client: Socket, ...args: any[]) {
+  handleConnection(client: Socket) {
     this.logger.log(`Client connected:     ${client.id}`);
     client.emit('checkUser');
   }
@@ -180,6 +180,19 @@ export class ChatGateway
   @SubscribeMessage('userWriteMsg')
   handleUserWrite(client: Socket, { chatId, uId }) {
     this.typing({ chatId, uId, client });
+  }
+
+  @SubscribeMessage('changeMsgStatus')
+  handleChangeMsg(client: Socket, { chatId, msgId }) {
+    const newMsg = this.chats.changeMsgStatus(
+      chatId,
+      msgId,
+      new Date().toISOString(),
+    );
+    console.log(' - newMsg:192 >', newMsg); // eslint-disable-line no-console
+    this.wss
+      .in(`chat${chatId}`)
+      .emit('updateMsgStatus', { msg: newMsg, chatId });
   }
 
   //receive chat messages from server
