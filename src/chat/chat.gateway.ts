@@ -201,11 +201,17 @@ export class ChatGateway
     // const chat = this.chats.checkChat(users);
     const chat = this.chats.checkChat(users);
     client.join('chat' + chat.id);
-    return {
+    client.emit('getChat', {
       chatId: chat.id,
       msgs: chat.messages,
       usersInChat: chat.users,
       writes: chat.whoWrite,
-    };
+    });
+    // return {
+    //   chatId: chat.id,
+    //   msgs: chat.messages,
+    //   usersInChat: chat.users,
+    //   writes: chat.whoWrite,
+    // };
   }
 }
